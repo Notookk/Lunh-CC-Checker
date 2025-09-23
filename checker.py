@@ -693,7 +693,7 @@ async def exportchecks_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- BOT SETUP ----------------
 def main():
-    if BOT_TOKEN == "PUT_YOUR_BOT_TOKEN_HERE":
+    if BOT_TOKEN == "PUT_YOUR_BOT_TOKEN":
         logger.error("Please set BOT_TOKEN in the script before running.")
         return
 
@@ -719,3 +719,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
