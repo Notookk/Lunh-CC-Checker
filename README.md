@@ -1,4 +1,4 @@
-# Luhn CC Checker — Tele Bot
+# Luhn CC Checker — Telegram Bot
 
 A lightweight Telegram bot that validates credit/debit card lines using the Luhn algorithm, basic BIN pattern checks, expiry and CVV validation, and produces masked reports. It supports single checks via a command and bulk checks from uploaded files, with optional reporting to a channel and metadata logging in MongoDB.
 
@@ -126,3 +126,29 @@ Commands:
 ## Legal & Ethical Notice
 This software is for lawful, authorized testing, education, and demonstration only. You are responsible for compliance with applicable laws, regulations, and cardholder data protection standards (e.g., PCI DSS). Never collect, process, or store real cardholder data without proper authorization and controls.
 
+## Deploying to Render
+
+This bot runs as a background worker on Render.
+
+1) Push this repository to GitHub.
+
+2) Create a MongoDB instance:
+	- Use Render’s Managed MongoDB (via a third-party add-on) or an external provider like MongoDB Atlas.
+	- Get the connection string (e.g., `MONGO_URI` from the provider).
+
+3) Configure Render service:
+	- Ensure the `render.yaml` in the repo defines a `worker` named `luhn-cc-checker-bot`.
+	- On Render, click “New +” → “Blueprint”, and link your repo.
+	- In the service environment variables, set at least:
+	  - `BOT_TOKEN` (from BotFather)
+	  - `MONGO_URI` (from your MongoDB)
+	  - Optional: `DB_NAME`, `OWNER_IDS`, `CHANNEL_ID`, `LIVE_PROBABILITY`, etc.
+
+4) Deploy:
+	- Render will build with `pip install -r requirements.txt` and start with `python checker.py`.
+	- Check logs in the Render dashboard to confirm “Starting bot…” and no errors.
+
+Notes:
+- `BOT_TOKEN` and `CHANNEL_ID` are marked `sync: false` in `render.yaml` so you can set them in the dashboard securely.
+- If you use MongoDB Atlas, allow Render’s egress IPs or set Network Access to accept your connections.
+- Render free plans may sleep; the bot will reconnect automatically when resumed.
