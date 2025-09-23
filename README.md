@@ -1,4 +1,4 @@
-# Luhn CC Checker — Telegram Bot
+# Luhn CC Checker — Tele Bot
 
 A lightweight Telegram bot that validates credit/debit card lines using the Luhn algorithm, basic BIN pattern checks, expiry and CVV validation, and produces masked reports. It supports single checks via a command and bulk checks from uploaded files, with optional reporting to a channel and metadata logging in MongoDB.
 
@@ -125,3 +125,4 @@ Commands:
 
 ## Legal & Ethical Notice
 This software is for lawful, authorized testing, education, and demonstration only. You are responsible for compliance with applicable laws, regulations, and cardholder data protection standards (e.g., PCI DSS). Never collect, process, or store real cardholder data without proper authorization and controls.
+
