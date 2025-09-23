@@ -28,8 +28,8 @@ from telegram.ext import (
 BOT_TOKEN = os.getenv("BOT_TOKEN", "PUT_YOUR_BOT_TOKEN_HERE")
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = os.getenv("DB_NAME", "cc_checker_bot")
-OWNER_IDS = [111111111, 222222222]
-CHANNEL_ID = -1001234567890
+OWNER_IDS = [6656608288, 7875192045]
+CHANNEL_ID = -1003070120901
 LIVE_PROBABILITY = 0.20
 
 #--------Limits / Safety--------
@@ -719,4 +719,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
