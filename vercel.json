@@ -1,0 +1,14 @@
+{
+  "builds": [
+    {
+      "src": "checker.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "checker.py"
+    }
+  ]
+}
